@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Truth Detector Vault</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red: #ff2244;
+      --yellow: #ffcc00;
+      --green: #00ff88;
+      --bg: #0a0a12;
+      --panel: #10101e;
+      --border: #1e1e3a;
+      --glow-red: 0 0 20px #ff224488, 0 0 60px #ff224444;
+      --glow-yellow: 0 0 20px #ffcc0088, 0 0 60px #ffcc0044;
+      --glow-green: 0 0 20px #00ff8888, 0 0 60px #00ff8844;
+    }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg);
+      font-family: 'Rajdhani', sans-serif;
+      color: #fff;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 9999;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+      pointer-events: none;
+    }
+
+    /* Star field */
+    .stars {
+      position: fixed; inset: 0; z-index: 0;
+      background: radial-gradient(ellipse at 20% 20%, #1a0a2e 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 80%, #0a1a2e 0%, transparent 60%),
+                  var(--bg);
+    }
+    .stars::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 45%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 25%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 70%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 40%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 20% 80%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 45% 90%, rgba(255,255,255,0.3) 0%, transparent 100%);
+    }
+
+    /* Screens */
+    .screen {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+    .screen.active {
+      opacity: 1; pointer-events: all;
+    }
+
+    /* Panel */
+    .panel {
+      background: linear-gradient(145deg, #12122080, #0a0a1880);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 24px;
+      width: 100%; max-width: 380px;
+      backdrop-filter: blur(12px);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    /* Door visual */
+    .door-wrap {
+      position: relative;
+      width: 140px; height: 200px;
+      margin: 0 auto 24px;
+    }
+    .door-frame {
+      width: 100%; height: 100%;
+      border: 3px solid #2a2a4a;
+      border-radius: 12px 12px 4px 4px;
+      background: linear-gradient(160deg, #1a1a30, #0d0d20);
+      position: relative;
+      overflow: visible;
+      box-shadow: 0 0 30px rgba(0,0,50,0.8), inset 0 0 20px rgba(0,0,30,0.5);
+    }
+    .door-panel-top {
+      position: absolute; top: 14px; left: 12px; right: 12px;
+      height: 70px;
+      border: 2px solid #2a2a4a;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #1e1e38, #141428);
+    }
+    .door-panel-bot {
+      position: absolute; top: 96px; left: 12px; right: 12px;
+      height: 85px;
+      border: 2px solid #2a2a4a;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #1e1e38, #141428);
+    }
+    .door-knob {
+      position: absolute; right: -10px; top: 50%;
+      transform: translateY(-50%);
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #4a4a7a, #1a1a3a);
+      border: 2px solid #3a3a6a;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.5);
+      transition: all 0.5s ease;
+    }
+    .door-knob.glow-green {
+      background: radial-gradient(circle at 35% 35%, #00ff88, #00aa55);
+      border-color: #00ff88;
+      box-shadow: 0 0 15px #00ff88, 2px 2px 8px rgba(0,0,0,0.5);
+    }
+
+    /* Light indicator */
+    .light-wrap {
+      position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    }
+    .light {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: var(--glow-red);
+      border: 3px solid rgba(255,255,255,0.15);
+      animation: blink 1s ease-in-out infinite;
+      transition: background 0.5s ease, box-shadow 0.5s ease;
+    }
+    .light.yellow { background: var(--yellow); box-shadow: var(--glow-yellow); animation: none; }
+    .light.green  { background: var(--green);  box-shadow: var(--glow-green);  animation: pulse-green 1.2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    @keyframes pulse-green { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+
+    /* Typography */
+    .vault-title {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #4a4a7a;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .warning-badge {
+      background: linear-gradient(90deg, #ff224420, #ff224410);
+      border: 1px solid #ff224455;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--red);
+      text-align: center;
+      margin-bottom: 20px;
+      animation: blink 2s ease-in-out infinite;
+    }
+    h1 {
+      font-family: 'Orbitron', monospace;
+      font-size: 18px;
+      font-weight: 900;
+      text-align: center;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    p {
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      color: #aaaacc;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .status-text {
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .status-text.red    { color: var(--red); }
+    .status-text.yellow { color: var(--yellow); }
+    .status-text.green  { color: var(--green); }
+
+    /* Progress bar */
+    .progress-bar {
+      width: 100%; height: 4px;
+      background: #1a1a30;
+      border-radius: 2px;
+      margin-bottom: 28px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 2px;
+      background: linear-gradient(90deg, #4444aa, #8888ff);
+      transition: width 0.5s ease;
+    }
+
+    /* Buttons */
+    .btn {
+      display: block; width: 100%;
+      padding: 16px;
+      border: none; border-radius: 12px;
+      font-family: 'Orbitron', monospace;
+      font-size: 14px; font-weight: 700;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .btn:active { transform: scale(0.97); }
+    /* Inside btn-group, let flex control sizing */
+    .btn-group .btn { width: auto; flex: 1; }
+    .btn-primary {
+      background: linear-gradient(135deg, #2222aa, #4444dd);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(68,68,220,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .btn-primary:hover { box-shadow: 0 4px 30px rgba(68,68,220,0.6), inset 0 1px 0 rgba(255,255,255,0.1); }
+    .btn-yes {
+      background: linear-gradient(135deg, #006633, #00aa55);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(0,170,85,0.3);
+    }
+    .btn-no {
+      background: linear-gradient(135deg, #440011, #880022);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(136,0,34,0.3);
+    }
+    /* Only the Q1 No button goes runaway (fixed) */
+    #noBtn1.runaway {
+      position: fixed;
+      z-index: 1000;
+      width: 140px !important;
+      flex: none;
+      transition: left 0.18s cubic-bezier(0.22, 1, 0.36, 1), top 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .btn-mega {
+      background: linear-gradient(135deg, #00aa44, #00ff88);
+      color: #001a0d;
+      font-size: 18px;
+      padding: 20px;
+      box-shadow: 0 0 40px rgba(0,255,136,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+      animation: pulse-btn 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-btn { 0%,100%{box-shadow:0 0 40px rgba(0,255,136,0.4)} 50%{box-shadow:0 0 60px rgba(0,255,136,0.7)} }
+
+    /* Q1 button pair — side by side */
+    .btn-group { display: flex; gap: 12px; }
+    .btn-no-ghost { display: none; }
+
+    /* System message */
+    .sys-msg {
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-top: 16px;
+      border: 1px solid;
+      animation: fadeIn 0.4s ease;
+    }
+    .sys-msg.yellow { background: #ffcc0015; border-color: #ffcc0040; color: var(--yellow); }
+    .sys-msg.green  { background: #00ff8815; border-color: #00ff8840; color: var(--green);  }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+    /* Screen 5 - Reveal */
+    #screen5 .panel {
+      background: linear-gradient(145deg, #0a180a90, #0a1a0a80);
+      border-color: #00ff8840;
+    }
+    .photo-frame {
+      width: 180px; height: 180px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      position: relative;
+    }
+    .photo-frame img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      border: 4px solid var(--green);
+      box-shadow: 0 0 30px rgba(0,255,136,0.5), 0 0 60px rgba(0,255,136,0.2);
+      display: block;
+    }
+    /* Sparkles */
+    .sparkle {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #ffff88;
+      animation: sparkle-anim 1.5s ease-in-out infinite;
+      box-shadow: 0 0 10px #ffff88;
+    }
+    .sparkle:nth-child(1) { top: -4px; left: 50%; animation-delay: 0s; }
+    .sparkle:nth-child(2) { top: 20%; right: -4px; animation-delay: 0.3s; }
+    .sparkle:nth-child(3) { bottom: 10%; right: 8px; animation-delay: 0.6s; }
+    .sparkle:nth-child(4) { bottom: -4px; left: 30%; animation-delay: 0.9s; }
+    .sparkle:nth-child(5) { top: 30%; left: -4px; animation-delay: 1.2s; }
+    @keyframes sparkle-anim { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0;transform:scale(0.5)} }
+
+    .reveal-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: var(--red);
+      text-align: center;
+      margin-bottom: 8px;
+      animation: blink 1.5s ease-in-out infinite;
+    }
+    .reveal-subtitle {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .reveal-caption {
+      font-size: 13px;
+      color: #00ff88;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    /* Door swing animation */
+    .door-open {
+      transform-origin: left center;
+      animation: door-swing 1s ease-in-out forwards;
+    }
+    @keyframes door-swing {
+      0%  { transform: perspective(400px) rotateY(0deg); opacity:1; }
+      100%{ transform: perspective(400px) rotateY(-85deg); opacity:0.3; }
+    }
+
+    /* Confetti burst */
+    .confetti-container {
+      position: fixed; inset: 0; z-index: 5; pointer-events: none;
+      overflow: hidden;
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px; height: 8px;
+      opacity: 0;
+      animation: confetti-fall 2s ease-in forwards;
+    }
+    @keyframes confetti-fall {
+      0%  { opacity:1; transform: translateY(-20px) rotate(0deg); }
+      100%{ opacity:0; transform: translateY(100vh) rotate(720deg); }
+    }
+
+    /* Screen 5 entrance */
+    #screen5.active .panel {
+      animation: scaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    @keyframes scaleIn { from{transform:scale(0.5);opacity:0} to{transform:scale(1);opacity:1} }
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="confetti-container" id="confetti"></div>
+
+  <!-- SCREEN 1: WARNING -->
+  <div class="screen active" id="screen1">
+    <div class="panel">
+      <div class="vault-title">⚡ VAULT ACCESS SYSTEM ⚡</div>
+      <div class="door-wrap">
+        <div class="light-wrap"><div class="light" id="light1"></div></div>
+        <div class="door-frame" id="door1">
+          <div class="door-panel-top"></div>
+          <div class="door-panel-bot"></div>
+          <div class="door-knob" id="knob1"></div>
+        </div>
+      </div>
+      <div class="status-text red">● STATUS: LOCKED</div>
+      <div class="warning-badge">⚠ CLASSIFIED ACCESS ONLY ⚠</div>
+      <h1>TRUTH DETECTOR VAULT</h1>
+      <p>Warning: You are attempting to access a highly classified vault. To open the door, you must pass the Truth Detector.</p>
+      <button class="btn btn-primary" onclick="goTo(2)">▶ START VERIFICATION</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Q1 -->
+  <div class="screen" id="screen2">
+    <div class="panel">
+      <div class="vault-title">🔒 SECURITY CHECK · 1 OF 2</div>
+      <div class="door-wrap">
+        <div class="light-wrap"><div class="light yellow"></div></div>
+        <div class="door-frame">
+          <div class="door-panel-top"></div>
+          <div class="door-panel-bot"></div>
+          <div class="door-knob"></div>
+        </div>
+      </div>
+      <div class="status-text yellow">● STATUS: SCANNING...</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:33%"></div></div>
+      <h1>QUESTION 01</h1>
+      <p>Are you currently looking absolutely <em style="color:#ffcc00">adorable</em> today?</p>
+      <div class="btn-group">
+        <button class="btn btn-yes" onclick="goTo(3)">✓ YES</button>
+        <div class="btn-no-ghost" id="noGhost"></div>
+        <button class="btn btn-no" id="noBtn1">✗ NO</button>
+      </div>
+      <div class="sys-msg yellow" style="display:none" id="sys1">⚠ INCORRECT ANSWER DETECTED. PLEASE RECONSIDER.</div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: Q2 -->
+  <div class="screen" id="screen3">
+    <div class="panel">
+      <div class="vault-title">🔒 SECURITY CHECK · 2 OF 2</div>
+      <div class="door-wrap">
+        <div class="light-wrap"><div class="light yellow"></div></div>
+        <div class="door-frame">
+          <div class="door-panel-top"></div>
+          <div class="door-panel-bot"></div>
+          <div class="door-knob"></div>
+        </div>
+      </div>
+      <div class="status-text yellow">● STATUS: VERIFYING...</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:66%"></div></div>
+      <h1>QUESTION 02</h1>
+      <p>Do you promise you won't <em style="color:#ff88aa">blush</em> when you see what's behind this door?</p>
+      <button class="btn btn-yes" style="margin-bottom:12px" onclick="q2Answer('yes')">✓ YES, I PROMISE</button>
+      <button class="btn btn-no" onclick="q2Answer('no')">✗ NO PROMISES</button>
+      <div class="sys-msg yellow" style="display:none" id="sys2"></div>
+    </div>
+  </div>
+
+  <!-- SCREEN 4: FINAL CONFIRMATION -->
+  <div class="screen" id="screen4">
+    <div class="panel">
+      <div class="vault-title">✅ IDENTITY CONFIRMED</div>
+      <div class="door-wrap">
+        <div class="light-wrap"><div class="light green"></div></div>
+        <div class="door-frame" id="door4">
+          <div class="door-panel-top"></div>
+          <div class="door-panel-bot"></div>
+          <div class="door-knob glow-green" id="knob4"></div>
+        </div>
+      </div>
+      <div class="status-text green">● STATUS: CLEARANCE GRANTED</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%;background:linear-gradient(90deg,#00aa44,#00ff88)"></div></div>
+      <h1>VAULT UNLOCKED</h1>
+      <p>Identity confirmed. You are officially cleared to view the world's most precious treasure. Open the door?</p>
+      <button class="btn btn-mega" onclick="openVault()">🚪 YES! OPEN IT!</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 5: THE REVEAL -->
+  <div class="screen" id="screen5">
+    <div class="panel">
+      <div class="reveal-title">🚨 SECURITY ALERT 🚨</div>
+      <div class="photo-frame">
+        <span class="sparkle"></span>
+        <span class="sparkle"></span>
+        <span class="sparkle"></span>
+        <span class="sparkle"></span>
+        <span class="sparkle"></span>
+        <img src="image.jpg" alt="The cutest girl" id="revealImg" />
+      </div>
+      <div class="reveal-subtitle">THE CUTEST GIRL<br>HAS BEEN LOCATED!</div>
+      <div class="reveal-caption">✨ IDENTITY: VERIFIED ✨</div>
+      <div class="sys-msg green" style="margin-top:20px">VAULT CLASSIFICATION: TOP ADORABLE 💖</div>
+    </div>
+  </div>
+
+  <script>
+    // Screen navigation
+    function goTo(n) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen' + n).classList.add('active');
+      if (n === 2) placeNoBtnInitial();
+    }
+
+    // Q1: Runaway "No" button — starts side-by-side, escapes on touch
+    let runCount = 0;
+    const noBtn = document.getElementById('noBtn1');
+
+    function placeNoBtnInitial() {
+      // Reset to in-flow side-by-side position
+      noBtn.classList.remove('runaway');
+      noBtn.style.left = '';
+      noBtn.style.top  = '';
+      noBtn.style.width = '';
+      runCount = 0;
+      document.getElementById('sys1').style.display = 'none';
+    }
+
+    function runAway(clientX, clientY) {
+      // First escape: snapshot current position, then go fixed
+      if (!noBtn.classList.contains('runaway')) {
+        const rect = noBtn.getBoundingClientRect();
+        noBtn.style.left  = rect.left + 'px';
+        noBtn.style.top   = rect.top  + 'px';
+        noBtn.style.width = rect.width + 'px';
+        noBtn.classList.add('runaway');
+        // Force reflow so transition doesn't fire on the initial placement
+        noBtn.offsetHeight;
+      }
+
+      runCount++;
+      const bw = noBtn.offsetWidth || 140;
+      const bh = noBtn.offsetHeight || 52;
+      const margin = 16;
+      const maxX = window.innerWidth  - bw - margin;
+      const maxY = window.innerHeight - bh - margin;
+
+      let newX, newY, attempts = 0;
+      do {
+        newX = margin + Math.random() * maxX;
+        newY = margin + Math.random() * maxY;
+        attempts++;
+      } while (
+        attempts < 20 &&
+        Math.abs(newX - clientX) < 100 &&
+        Math.abs(newY - clientY) < 100
+      );
+
+      noBtn.style.left = newX + 'px';
+      noBtn.style.top  = newY + 'px';
+
+      if (runCount >= 2) {
+        document.getElementById('sys1').style.display = 'block';
+      }
+    }
+
+    // Touch
+    noBtn.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      const t = e.touches[0];
+      runAway(t.clientX, t.clientY);
+    }, { passive: false });
+
+    // Mouse (desktop preview)
+    noBtn.addEventListener('mouseenter', function(e) {
+      runAway(e.clientX, e.clientY);
+    });
+
+    // Q2: Both answers accepted
+    function q2Answer(choice) {
+      const sys = document.getElementById('sys2');
+      sys.style.display = 'block';
+      if (choice === 'yes') {
+        sys.textContent = "⟩ SYSTEM: We'll see about that... 😏";
+        sys.className = 'sys-msg yellow';
+      } else {
+        sys.textContent = "⟩ SYSTEM: Honesty appreciated. Proceeding...";
+        sys.className = 'sys-msg green';
+      }
+      setTimeout(() => goTo(4), 1400);
+    }
+
+    // Open vault → door animation then reveal
+    function openVault() {
+      const door = document.getElementById('door4');
+      door.classList.add('door-open');
+      setTimeout(() => {
+        goTo(5);
+        spawnConfetti();
+      }, 900);
+    }
+
+    // Confetti
+    const colors = ['#ff2244','#ffcc00','#00ff88','#ff88cc','#88aaff','#ffffff'];
+    function spawnConfetti() {
+      const container = document.getElementById('confetti');
+      for (let i = 0; i < 60; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti-piece';
+        el.style.cssText = `
+          left: ${Math.random()*100}%;
+          top: ${Math.random()*20}%;
+          background: ${colors[Math.floor(Math.random()*colors.length)]};
+          border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+          width: ${6 + Math.random()*8}px;
+          height: ${6 + Math.random()*8}px;
+          animation-delay: ${Math.random()*1.5}s;
+          animation-duration: ${1.5 + Math.random()*1.5}s;
+        `;
+        container.appendChild(el);
+      }
+      setTimeout(() => container.innerHTML = '', 4000);
+    }
+
+    // Prevent default touch scroll on the whole page
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  </script>
+</body>
+</html>
